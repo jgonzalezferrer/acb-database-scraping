@@ -24,6 +24,7 @@ def get_game_and_teams(raw_game, game_number, season):
     estadisticas_tag = '.estadisticasnew' if re.search(r'<table class="estadisticasnew"', raw_game) else '.estadisticas'
     doc = pq(raw_game)
     info_game_data = doc(estadisticas_tag).eq(0)
+
     game_dict = dict()
     game_dict['acbid'] = int(str(season.season_id) + str(game_number).zfill(3))
 
@@ -39,41 +40,42 @@ def get_game_and_teams(raw_game, game_number, season):
     game_dict['venue'] = venue
     game_dict['journey'] = journey.split(" ")[1]
 
-    first_quarter_data = info_game_data('.estnaranja')('td').eq(2).text()
-    game_dict['score_home_first'], game_dict['score_away_first'] = list(map(int, first_quarter_data.split("|")))
+    for i in range(2,7):
+        score_home_attribute = ''
+        score_away_attribute = ''
+        if i == 2:
+            score_home_attribute = 'score_home_first'
+            score_away_attribute = 'score_away_first'
+        elif i == 3:
+            score_home_attribute = 'score_home_second'
+            score_away_attribute = 'score_away_second'
+        elif i == 4:
+            score_home_attribute = 'score_home_third'
+            score_away_attribute = 'score_away_third'
+        elif i == 5:
+            score_home_attribute = 'score_home_fourth'
+            score_away_attribute = 'score_away_fourth'
+        elif i == 6:
+            score_home_attribute = 'score_home_extra'
+            score_away_attribute = 'score_away_extra'
 
-    second_quarter_data = info_game_data('.estnaranja')('td').eq(3).text()
-    game_dict['score_home_second'], game_dict['score_away_second'] = list(map(int, second_quarter_data.split("|")))
-
-    third_quarter_data = info_game_data('.estnaranja')('td').eq(4).text()
-    game_dict['score_home_third'], game_dict['score_away_third'] = list(map(int, third_quarter_data.split("|")))
-
-    fourth_quarter_data = info_game_data('.estnaranja')('td').eq(5).text()
-    game_dict['score_home_fourth'], game_dict['score_away_fourth'] = list(map(int, fourth_quarter_data.split("|")))
-
-    extra_quarter_data = info_game_data('.estnaranja')('td').eq(6).text()
-    if extra_quarter_data:
-        game_dict['score_home_extra'], game_dict['score_away_extra'] = list(map(int, extra_quarter_data.split("|")))
+        quarter_data = info_game_data('.estnaranja')('td').eq(i).text()
+        if quarter_data:
+            game_dict[score_home_attribute], game_dict[score_away_attribute] = list(map(int, quarter_data.split("|")))
 
     # Information about the players
     info_players_data = doc(estadisticas_tag).eq(1)
     teams_ids = season.get_teams_ids()
 
-    home_team_data = info_players_data('.estverde').eq(0)('td').eq(0).text()
-    home_team_name, score_home = re.search("(.*) ([1]?[0-9][0-9])", home_team_data).groups()
-    home_team = Team.get_or_create(**{'acbid': teams_ids[home_team_name], 'name': home_team_name, 'season': season.season})[0]
-    game_dict['team_home_id'] = home_team
-    game_dict['score_home'] = int(score_home)
-
-    away_team_data = info_players_data('.estverde').eq(2)('td').eq(0).text()
-    away_team_name, score_away = re.search("(.*) ([1]?[0-9][0-9])", away_team_data).groups()
-    away_team = Team.get_or_create(**{'acbid': teams_ids[away_team_name], 'name': away_team_name, 'season': season.season})[0]
-    game_dict['team_away_id'] = away_team
-    game_dict['score_away'] = int(score_away)
+    for i in [0, 2]:
+        team_data = info_players_data('.estverde').eq(i)('td').eq(0).text()
+        team_name, score = re.search("(.*) ([1]?[0-9][0-9])", team_data).groups()
+        team =  Team.get_or_create(**{'acbid': teams_ids[team_name], 'name': team_name, 'season': season.season})[0]
+        game_dict['team_home_id' if i == 0 else 'team_away_id'] = team
+        game_dict['score_home' if i == 0 else 'score_away'] = int(score)
 
     game = Game.get_or_create(**game_dict)[0]
-
-    return game, home_team, away_team
+    return game
 
 
 def get_referees(raw_game):
@@ -87,7 +89,7 @@ def get_referees(raw_game):
     return referees
 
 
-def get_participants_and_actors(raw_game, game, home_team, away_team):
+def get_participants_and_actors(raw_game, game):
     estadisticas_tag = '.estadisticasnew' if re.search(r'<table class="estadisticasnew"', raw_game) else '.estadisticas'
     doc = pq(raw_game)
     info_players_data = doc(estadisticas_tag).eq(1)
@@ -135,7 +137,7 @@ def get_participants_and_actors(raw_game, game, home_team, away_team):
     for tr in info_players_data('tr').items():
         if tr('.estverde'):  # team information
             if tr.eq(0)('.estverdel'):
-                current_team = away_team.name if current_team else home_team.name
+                current_team = game.team_away.name if current_team else game.team_home.name
                 stats[current_team] = defaultdict(dict)
             else:  # omit indexes
                 pass
@@ -153,7 +155,7 @@ def get_participants_and_actors(raw_game, game, home_team, away_team):
                         stats[current_team][number] = fill_dict(header_to_db.values())
                         stats[current_team][number]['is_starter'] = 1 if td('.gristit') else 0
                         stats[current_team][number]['game'] = game
-                        stats[current_team][number]['team'] = home_team if current_team == home_team.name else away_team
+                        stats[current_team][number]['team'] = game.team_home if current_team == game.team_home.name else game.team_away
 
                 elif cont == 1 and td('a'): # player id
                     href_attribute = td('a').attr('href').split("=")
@@ -216,9 +218,9 @@ def main():
     with open('../data/'+str(year)+'/'+str(game_number)+'.html') as f:
         raw_game = f.read()
 
-    game, home_team, away_team = get_game_and_teams(raw_game=raw_game, game_number=game_number, season=season)
+    game = get_game_and_teams(raw_game=raw_game, game_number=game_number, season=season)
     referees = get_referees(raw_game=raw_game)
-    participants, actors = get_participants_and_actors(raw_game=raw_game, game=game, home_team=home_team, away_team=away_team)
+    participants, actors = get_participants_and_actors(raw_game=raw_game, game=game)
 
 if __name__ == "__main__":
     main()
