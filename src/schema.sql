@@ -11,12 +11,19 @@ CREATE INDEX team_name_idx ON team(name);
 
 CREATE TABLE game (
     id INTEGER PRIMARY KEY,  -- SQLite automatically increments PKs.
-    acbid INTEGER UNIQUE NOT NULL,  -- Soccerway game ID.
+    acbid TEXT UNIQUE NOT NULL,  -- ACB game ID.
     team_home_id INTEGER REFERENCES team,
     team_away_id INTEGER REFERENCES team,
-    competition_phase TEXT, -- Regular season or playoff.
-    round TEXT, -- If playoff, round of the game (quarter final, semifinal, final).
-    journey INTEGER, -- Number of the journey. In regular season it is generally one journey per week. In playoff it is one journey per round match.
+
+    -- Regular season or playoff.
+    competition_phase TEXT,
+
+    -- If playoff, round of the game (quarter final, semifinal, final).
+    round TEXT,
+
+    -- Number of the journey. In regular season it is generally one journey per week. In playoff it is one journey per round match.
+    journey INTEGER,
+
     venue TEXT,
     attendance INTEGER,
 
@@ -60,11 +67,11 @@ CREATE INDEX game_kickoff_time_idx ON game(kickoff_time);
  * NULL. */
 CREATE TABLE actor (
     id INTEGER PRIMARY KEY,  -- SQLite automatically increments PKs.
-    acbid TEXT UNIQUE NOT NULL,  -- Soccerway person / player ID.
-    display_name TEXT,  -- E.g. "Hulk".
-    first_name TEXT,  -- E.g. "Givanildo".
-    last_name TEXT,  -- E.g. "Vieira de Souza".
-    alt_names TEXT,  -- JSON-encoded array with alternative names.
+    acbid TEXT UNIQUE NOT NULL,  -- ACB player / coach ID.
+    display_name TEXT,
+    first_name TEXT,
+    last_name TEXT,
+    alt_names TEXT,
     nationality TEXT,
 
     -- Date of birth. In number of seconds since UNIX epoch, UTC timezone.
@@ -78,17 +85,25 @@ CREATE INDEX actor_acbd_idx ON actor(acbid);
 CREATE INDEX actor_display_name_idx ON actor(display_name);
 
 
+/* A participant is a player, a coach or a referee. In this table, many fields may be set to
+ * NULL. */
 CREATE TABLE participant (
     id INTEGER PRIMARY KEY,  -- SQLite automatically increments PKs.
     game_id INTEGER REFERENCES game NOT NULL,
-    team_id INTEGER REFERENCES team NOT NULL,
+    team_id INTEGER REFERENCES team,
     actor_id INTEGER REFERENCES actor,
+
+    -- Display name of the actor
+    display_name TEXT,
 
     -- Squad number of the player
     number INTEGER,
 
     -- True if the actor is the coach.
     is_coach BOOLEAN,
+
+    -- True if the actor is a referee.
+    is_referee BOOLEAN,
 
     -- True if the player starts the game.
     is_starter BOOLEAN,

@@ -51,7 +51,7 @@ class Team(BaseModel):
 
 class Game(BaseModel):
     id = PrimaryKeyField()
-    acbid = IntegerField(unique=True, index=True)
+    acbid = TextField(unique=True, index=True)
     team_home = ForeignKeyField(Team, related_name='games_home', index=True, null=True)
     team_away = ForeignKeyField(Team, related_name='games_away', index=True, null=True)
     competition_phase = TextField(null=True)
@@ -99,10 +99,12 @@ class Actor(BaseModel):
 class Participant(BaseModel):
     id = PrimaryKeyField()
     game = ForeignKeyField(Game, related_name='participants', index=True)
-    team = ForeignKeyField(Team, index=True)
+    team = ForeignKeyField(Team, index=True, null=True)
     actor = ForeignKeyField(Actor, related_name='participations', index=True, null=True)
+    display_name = TextField(null=True)
     number = IntegerField(null=True)
     is_coach = BooleanField(null=True)
+    is_referee = BooleanField(null=True)
     is_starter = BooleanField(null=True)
     minutes = IntegerField(null=True)
     point = IntegerField(null=True)
