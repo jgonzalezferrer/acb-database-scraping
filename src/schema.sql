@@ -3,7 +3,8 @@ CREATE TABLE team (
     acbid TEXT UNIQUE NOT NULL,  -- Soccerway team ID.
     name TEXT NOT NULL,
     season INTEGER NOT NULL,
-    alt_names TEXT -- JSON-encoded array with alternative names.
+    founded_year INTEGER
+
 );
 CREATE INDEX team_acbid_idx ON team(acbid);
 CREATE INDEX team_name_idx ON team(name);

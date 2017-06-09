@@ -7,7 +7,8 @@ from src.download import validate_dir, open_or_download
 BASE_URL = 'http://www.acb.com/'
 DATA_PATH = '../data'
 FIRST_SEASON = 1956
-validate_dir(DATA_PATH)
+
+
 
 
 class Season:
@@ -15,13 +16,17 @@ class Season:
         self.season = season
         self.season_id = season - FIRST_SEASON + 1  # First season in 1956 noted as 1.
         self.SEASON_PATH = os.path.join(DATA_PATH, str(self.season))
+        self.GAMES_PATH = os.path.join(self.SEASON_PATH, 'games')
+        self.TEAMS_PATH = os.path.join(self.SEASON_PATH, 'teams')
         validate_dir(self.SEASON_PATH)
+        validate_dir(self.GAMES_PATH)
+        validate_dir(self.TEAMS_PATH)
 
         self.num_teams = self.get_number_teams()
         self.playoff_format = self.get_playoff_format()
 
     def save_teams(self):
-        filename = os.path.join(self.SEASON_PATH, 'teams' + '.html')
+        filename = os.path.join(self.TEAMS_PATH, 'teams' + '.html')
         url = BASE_URL + "resulcla.php?codigo=LACB-{}&jornada=1".format(self.season_id)
         return open_or_download(file_path=filename, url=url)
 
@@ -79,7 +84,7 @@ class Season:
         logger.info('Starting downloading...')
         n_games = self.get_number_games()
         for game_id in range(1, n_games + 1):
-            filename = os.path.join(self.SEASON_PATH, str(game_id) + '.html')
+            filename = os.path.join(self.GAMES_PATH, str(game_id) + '.html')
             url = BASE_URL + "stspartido.php?cod_competicion=LACB&cod_edicion={}&partido={}".format(self.season_id,
                                                                                                     game_id)
             open_or_download(file_path=filename, url=url)
@@ -87,7 +92,7 @@ class Season:
                 logger.info(
                 '{}% already downloaded'.format(round(float(game_id) / n_games * 100)))
 
-        logger.info('Downloading finished! (new {} games in {})'.format(n_games, self.SEASON_PATH))
+        logger.info('Downloading finished! (new {} games in {})'.format(n_games, self.GAMES_PATH))
 
     def sanity_check(self, logging_level=logging.INFO):
         logging.basicConfig(level=logging_level)
@@ -96,7 +101,7 @@ class Season:
         n_games = self.get_number_games()
         errors = []
         for game_id in range(1, n_games + 1):
-            filename = os.path.join(self.SEASON_PATH, str(game_id) + '.html')
+            filename = os.path.join(self.GAMES_PATH, str(game_id) + '.html')
             with open(filename) as f:
                 raw_html = f.read()
                 doc = pq(raw_html)
