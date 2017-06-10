@@ -1,18 +1,18 @@
 CREATE TABLE team (
     id INTEGER PRIMARY KEY,  -- SQLite automatically increments PKs.
     acbid TEXT UNIQUE NOT NULL,  -- Soccerway team ID.
-    founded_year INTEGER,
+    founded_year INTEGER
 );
 CREATE INDEX team_acbid_idx ON team(acbid);
 
 CREATE TABLE teamName (
     id INTEGER PRIMARY KEY,
-    acbid_id INTEGER REFERENCES team,
+    team_id INTEGER REFERENCES team,
     name TEXT NOT NULL,
     season INTEGER NOT NULL,
     UNIQUE (name, season)
 );
-CREATE INDEX teamName_acb_id_idx ON teamName(acbid_id);
+CREATE INDEX teamName_team_id_idx ON teamName(team_id);
 
 CREATE TABLE game (
     id INTEGER PRIMARY KEY,  -- SQLite automatically increments PKs.

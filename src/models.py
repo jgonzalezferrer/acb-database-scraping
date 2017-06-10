@@ -49,18 +49,6 @@ class BaseModel(Model):
         database = DB_PROXY
 
 
-class TeamName(BaseModel):
-    id = PrimaryKeyField()
-    team = ForeignKeyField(Team, related_name='names', index=True)
-    name = TextField()
-    season = IntegerField()
-
-    class Meta:
-        indexes = (
-            (('name', 'season'), True),
-        )
-
-
 class Team(BaseModel):
     class ListField(TextField):
         def db_value(self, value):
@@ -74,6 +62,24 @@ class Team(BaseModel):
     id = PrimaryKeyField()
     acbid = TextField(index=True)
     founded_year = IntegerField(null=True)
+
+    @staticmethod
+    def create_instances(season):
+        teams_ids = season.get_teams_ids()
+        teams_names = []
+        for name, acbid in teams_ids.items():
+            team = Team.get_or_create(**{'acbid': acbid})[0]
+            teams_names.append({'team': team, 'name': name, 'season': season.season})
+        TeamName.insert_many(teams_names).on_conflict('IGNORE').execute()
+
+    @staticmethod
+    def get_harcoded_teams():
+        harcoded_teams = {
+            2013: {'CB CANARIAS': 'CAN'},
+            2012: {'CAJA LABORAL': 'BAS', 'B&AGRAVE;SQUET MANRESA': 'MAN', 'BÀSQUET MANRESA': 'MAN'},
+            2011: {'BIZKAIA BILBAO BASKET': 'BLB'}
+        }
+        return harcoded_teams
 
     def update_content(self):
         season = Season(self.season)
@@ -92,6 +98,18 @@ class Team(BaseModel):
             return int(doc('.datojug').eq(0).text())
         else:
             raise Exception('The first field is not the founded year.')
+
+
+class TeamName(BaseModel):
+    id = PrimaryKeyField()
+    team = ForeignKeyField(Team, related_name='names', index=True)
+    name = TextField()
+    season = IntegerField()
+
+    class Meta:
+        indexes = (
+            (('name', 'season'), True),
+        )
 
 
 class Game(BaseModel):
@@ -154,6 +172,9 @@ class Game(BaseModel):
         :return: Game object
         """
 
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(__name__)
+
         """
         There are two different statistics table in acb.com. I assume they created the new one to introduce the +/- stat.
         """
@@ -177,6 +198,8 @@ class Game(BaseModel):
 
         # Information about the teams.
         info_teams_data = doc(estadisticas_tag).eq(1)
+        home_team_name = None
+        away_team_name = None
 
         """
         We only have the names of the teams (text) within the doc. Hence, we need to get the teams' ids from other source
@@ -202,47 +225,26 @@ class Game(BaseModel):
 
             """
             try:
-                team = Team.get_or_create(**{'acbid': teams_ids[team_name], 'name': team_name, 'season': season.season})[0]
-            except KeyError:  # they have used two different team names in a season >:(
-                try:
-                    if team_name == 'CB CANARIAS':
-                        most_likely_team = 'IBEROSTAR TENERIFE'
-                    else:
-                        most_likely_team = difflib.get_close_matches(team_name, teams_ids.keys(), 1, 0.4)[0]
-                    team = Team.get_or_create(
-                        **{'acbid': teams_ids[most_likely_team], 'name': team_name, 'season': season.season, 'alt_name': None})[0]
+                team = Team.get(Team.acbid == teams_ids[team_name])
+            except KeyError:
+                if season.season in list(Team.get_harcoded_teams().keys()) and team_name in list(Team.get_harcoded_teams()[season.season].keys()):
+                    team = Team.get(Team.acbid == Team.get_harcoded_teams()[season.season][team_name])
+                else:
+                    most_likely_team = difflib.get_close_matches(team_name, teams_ids.keys(), 1, 0.4)[0]
+                    team = Team.get(Team.acbid == teams_ids[most_likely_team])
 
-                    pp = team.alt_name if team.alt_name else []
-                    if most_likely_team not in pp:
-                        alt_name = pp
-                        alt_name.append(most_likely_team)
-                        team.alt_name = alt_name
-                        team.save()
+                    if most_likely_team not in season.mismatched_teams:
+                        season.mismatched_teams.append(most_likely_team)
+                        logger.info('Season {} -> {} has been matched to: {}'.format(season.season,
+                                                                                     team_name,
+                                                                                     most_likely_team))
 
-                except IntegrityError:  # they mixed (again) the official name and an alternative name >:( x2.
-                    team = Team.get(**{'acbid': teams_ids[most_likely_team], 'season': season.season})
-                    if team_name not in team.alt_name:
-                        alt_name = team.alt_name
-                        alt_name.append(team_name)
-                        team.alt_name = alt_name
-                        team.save()
-                if team_name not in season.mismatched_teams:
-                    season.mismatched_teams.append(team_name)
-                    logging.basicConfig(level=logging.INFO)
-                    logger = logging.getLogger(__name__)
-                    logger.info('Season {} -> {} has been matched to: {}'.format(season.season,
-                                                                                 team_name,
-                                                                                 most_likely_team))
-            except IntegrityError:  # they mixed (again) the official name and an alternative name >:( x2.
-                team = Team.get(**{'acbid': teams_ids[team_name], 'season': season.season})
-                if team_name not in team.alt_name:
-                    alt_name = team.alt_name
-                    alt_name.append(team_name)
-                    team.alt_name = alt_name
-                    team.save()
+            TeamName.get_or_create(**{'team': team, 'name': team_name, 'season': season.season})
 
             game_dict['team_home_id' if i == 0 else 'team_away_id'] = team
             game_dict['score_home' if i == 0 else 'score_away'] = int(score)
+            home_team_name = team_name if i == 0 else home_team_name
+            away_team_name = team_name if i != 0 else away_team_name
 
         # Information about the game.
         info_game_data = doc(estadisticas_tag).eq(0)
@@ -286,8 +288,13 @@ class Game(BaseModel):
 
             quarter_data = info_game_data('.estnaranja')('td').eq(i).text()
             if quarter_data:
-                game_dict[score_home_attribute], game_dict[score_away_attribute] = list(
-                    map(int, quarter_data.split("|")))
+                try:
+                    game_dict[score_home_attribute], game_dict[score_away_attribute] = list(
+                        map(int, quarter_data.split("|")))
+                except ValueError:
+                    logger.error('The game {} has {} or {} missing'.format(game_dict['acbid'],
+                                                                           score_home_attribute,
+                                                                           score_away_attribute))
 
         game = Game.get_or_create(**game_dict)[0]
         return game
@@ -362,7 +369,6 @@ class Actor(BaseModel):
             personal_info.update({'twitter': twitter})
         Actor.update(**personal_info).where(Actor.acbid == self.acbid).execute()
 
-
     def _get_personal_info(self, raw_doc):
         doc = pq(raw_doc)
         personal_info = dict()
@@ -410,6 +416,7 @@ class Actor(BaseModel):
     def _get_twitter(self, raw_doc):
         twitter = re.search(r'"http://www.twitter.com/(.*?)"', raw_doc)
         return twitter.groups()[0] if twitter else None
+
 
 class Participant(BaseModel):
     id = PrimaryKeyField()
@@ -530,7 +537,7 @@ class Participant(BaseModel):
         for tr in info_players_data('tr').items():  # iterate over each row
             if tr('.estverde'):  # header
                 if tr.eq(0)('.estverdel'):  # team information
-                    current_team = game.team_away.name if current_team else game.team_home.name  # first team home team
+                    current_team = 1 if current_team else 0  # first team home team
                     stats[current_team] = defaultdict(dict)
                 else:  # omit indexes
                     pass
@@ -549,7 +556,7 @@ class Participant(BaseModel):
                             stats[current_team][number] = fill_dict(header_to_db.values())
                             stats[current_team][number]['is_starter'] = 1 if td('.gristit') else 0
                             stats[current_team][number]['game'] = game
-                            stats[current_team][number]['team'] = game.team_home if current_team == game.team_home.name else game.team_away
+                            stats[current_team][number]['team'] = game.team_home if current_team == 0 else game.team_away
 
                     elif cont == 1 and td('a'):  # second cell player id
                         href_attribute = td('a').attr('href').split("=")  # the acb id is in the href attribute.
@@ -599,7 +606,7 @@ class Participant(BaseModel):
         We now insert the participants of the game in the database.
         Therefore, we need first to get or create the actors in the database.
 
-        We consider an actor as a player or a coach. We don't have informationa about referees so we don't include
+        We consider an actor as a player or a coach. We don't have information about referees so we don't include
         them here.
         """
         to_insert_many_participants = []
@@ -618,6 +625,7 @@ class Participant(BaseModel):
                 except KeyError:
                     pass
                 to_insert_many_participants.append(stats[team][player])
+
         participants = Participant.insert_many(to_insert_many_participants)
         participants.execute()
 

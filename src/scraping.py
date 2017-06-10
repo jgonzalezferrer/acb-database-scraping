@@ -7,6 +7,7 @@ from src.models import DATABASE, reset_database, Team, Game, Actor, Participant
 
 def scrap_games_and_participants(season):
     with DATABASE.atomic():
+        Team.create_instances(season)
         # Regular season
         competition_phase = 'regular'
         round_phase = None
@@ -57,8 +58,9 @@ def scrap_actors_and_teams():
 def main():
     # reset_database()
 
-    year = 2012
+    year = 2010
     season = Season(year)
+
 
     scrap_games_and_participants(season)
     # scrap_actors_and_teams()
