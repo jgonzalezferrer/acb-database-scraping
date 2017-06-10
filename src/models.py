@@ -1,7 +1,8 @@
-import os.path, re, datetime
+import os.path, re, datetime, difflib, logging
 from pyquery import PyQuery as pq
 from collections import defaultdict
-from src.download import open_or_download
+from peewee import IntegrityError
+from src.download import open_or_download, sanity_check
 from src.season import Season, BASE_URL, PLAYERS_PATH, COACHES_PATH
 from src.utils import fill_dict, replace_nth_ocurrence
 
@@ -14,7 +15,7 @@ from playhouse.db_url import connect
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                        '..', 'data', 'database.db'))
 SCHEMA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__),
-                              'schema.sql'))
+                                           'schema.sql'))
 DB_PROXY = Proxy()
 DATABASE = SqliteDatabase(DB_PATH)
 DB_PROXY.initialize(DATABASE)
@@ -48,11 +49,30 @@ class BaseModel(Model):
         database = DB_PROXY
 
 
-class Team(BaseModel):
+class TeamName(BaseModel):
     id = PrimaryKeyField()
-    acbid = TextField(unique=True, index=True)
-    name = TextField(index=True)
+    team = ForeignKeyField(Team, related_name='names', index=True)
+    name = TextField()
     season = IntegerField()
+
+    class Meta:
+        indexes = (
+            (('name', 'season'), True),
+        )
+
+
+class Team(BaseModel):
+    class ListField(TextField):
+        def db_value(self, value):
+            if value:
+                value = ','.join(value)
+            return value
+
+        def python_value(self, value):
+            return value.split(',') if value else []
+
+    id = PrimaryKeyField()
+    acbid = TextField(index=True)
     founded_year = IntegerField(null=True)
 
     def update_content(self):
@@ -72,8 +92,6 @@ class Team(BaseModel):
             return int(doc('.datojug').eq(0).text())
         else:
             raise Exception('The first field is not the founded year.')
-
-
 
 
 class Game(BaseModel):
@@ -100,6 +118,27 @@ class Game(BaseModel):
     score_home_extra = IntegerField(null=True)
     score_away_extra = IntegerField(null=True)
     db_flag = BooleanField(null=True)
+
+    @staticmethod
+    def save_games(season, logging_level=logging.INFO):
+        logging.basicConfig(level=logging_level)
+        logger = logging.getLogger(__name__)
+
+        logger.info('Starting downloading...')
+        n_games = season.get_number_games()
+        for game_id in range(1, n_games + 1):
+            filename = os.path.join(season.GAMES_PATH, str(game_id) + '.html')
+            url = BASE_URL + "stspartido.php?cod_competicion=LACB&cod_edicion={}&partido={}".format(season.season_id,
+                                                                                                    game_id)
+            open_or_download(file_path=filename, url=url)
+            if game_id % (round(n_games / 3)) == 0:
+                logger.info('{}% already downloaded'.format(round(float(game_id) / n_games * 100)))
+
+        logger.info('Downloading finished! (new {} games in {})'.format(n_games, season.GAMES_PATH))
+
+    @staticmethod
+    def sanity_check(season, logging_level=logging.INFO):
+        sanity_check(season.GAMES_PATH, logging_level)
 
     @staticmethod
     def create_instance(raw_game, id_game_number, season, competition_phase='regular', round_phase=None):
@@ -154,8 +193,54 @@ class Game(BaseModel):
             """
             We create a team per season since a team can have different names along its history. Anyway, same teams
             will have same acbid.
+
+            Note: ACB doesn't agree in teams names and sometimes write the same name in different ways.
+            E.g.:
+
+             - VALENCIA BASKET instead of VALENCIA BASKET CLUB
+             - C.B. OURENSE instead of CB OURENSE
+
             """
-            team = Team.get_or_create(**{'acbid': teams_ids[team_name], 'name': team_name, 'season': season.season})[0]
+            try:
+                team = Team.get_or_create(**{'acbid': teams_ids[team_name], 'name': team_name, 'season': season.season})[0]
+            except KeyError:  # they have used two different team names in a season >:(
+                try:
+                    if team_name == 'CB CANARIAS':
+                        most_likely_team = 'IBEROSTAR TENERIFE'
+                    else:
+                        most_likely_team = difflib.get_close_matches(team_name, teams_ids.keys(), 1, 0.4)[0]
+                    team = Team.get_or_create(
+                        **{'acbid': teams_ids[most_likely_team], 'name': team_name, 'season': season.season, 'alt_name': None})[0]
+
+                    pp = team.alt_name if team.alt_name else []
+                    if most_likely_team not in pp:
+                        alt_name = pp
+                        alt_name.append(most_likely_team)
+                        team.alt_name = alt_name
+                        team.save()
+
+                except IntegrityError:  # they mixed (again) the official name and an alternative name >:( x2.
+                    team = Team.get(**{'acbid': teams_ids[most_likely_team], 'season': season.season})
+                    if team_name not in team.alt_name:
+                        alt_name = team.alt_name
+                        alt_name.append(team_name)
+                        team.alt_name = alt_name
+                        team.save()
+                if team_name not in season.mismatched_teams:
+                    season.mismatched_teams.append(team_name)
+                    logging.basicConfig(level=logging.INFO)
+                    logger = logging.getLogger(__name__)
+                    logger.info('Season {} -> {} has been matched to: {}'.format(season.season,
+                                                                                 team_name,
+                                                                                 most_likely_team))
+            except IntegrityError:  # they mixed (again) the official name and an alternative name >:( x2.
+                team = Team.get(**{'acbid': teams_ids[team_name], 'season': season.season})
+                if team_name not in team.alt_name:
+                    alt_name = team.alt_name
+                    alt_name.append(team_name)
+                    team.alt_name = alt_name
+                    team.save()
+
             game_dict['team_home_id' if i == 0 else 'team_away_id'] = team
             game_dict['score_home' if i == 0 else 'score_away'] = int(score)
 
@@ -221,7 +306,47 @@ class Actor(BaseModel):
     height = DoubleField(null=True)
     weight = DoubleField(null=True)
     license = TextField(null=True)
+    debut_acb = DateTimeField(null=True)
     twitter = TextField(null=True)
+
+    @staticmethod
+    def save_actors(logging_level=logging.INFO):
+        logging.basicConfig(level=logging_level)
+        logger = logging.getLogger(__name__)
+
+        logger.info('Starting the download of actors...')
+        actors = Actor.select()
+        for cont, actor in enumerate(actors):
+            folder = COACHES_PATH if actor.is_coach else PLAYERS_PATH
+            url_tag = 'entrenador' if actor.is_coach else 'jugador'
+
+            filename = os.path.join(folder, actor.acbid + '.html')
+            url = os.path.join(BASE_URL, '{}.php?id={}'.format(url_tag, actor.acbid))
+            open_or_download(file_path=filename, url=url)
+
+            if cont % (round(len(actors) / 3)) == 0:
+                logger.info('{}% already downloaded'.format(round(float(cont) / len(actors) * 100)))
+
+        logger.info('Downloading finished!\n')
+
+    @staticmethod
+    def sanity_check(logging_level=logging.INFO):
+        sanity_check(PLAYERS_PATH, logging_level)
+        sanity_check(COACHES_PATH, logging_level)
+
+    @staticmethod
+    def update_actors(logging_level=logging.INFO):
+        logging.basicConfig(level=logging_level)
+        logger = logging.getLogger(__name__)
+
+        logger.info('Starting to update the actors that have not been filled yet...')
+        actors = Actor.select().where(Actor.full_name >> None)
+        for cont, actor in enumerate(actors):
+            actor.update_content()
+            if cont % (round(len(actors) / 3)) == 0:
+                logger.info( '{}% already updated'.format(round(float(cont) / len(actors) * 100)))
+
+        logger.info('Update finished! ({} actors)\n'.format(len(actors)))
 
     def update_content(self):
         folder = COACHES_PATH if self.is_coach else PLAYERS_PATH
@@ -237,9 +362,6 @@ class Actor(BaseModel):
             personal_info.update({'twitter': twitter})
         Actor.update(**personal_info).where(Actor.acbid == self.acbid).execute()
 
-
-        # self.founded_year = self.get_founded_year(content)
-        # self.save()
 
     def _get_personal_info(self, raw_doc):
         doc = pq(raw_doc)
@@ -275,8 +397,13 @@ class Actor(BaseModel):
                         personal_info['license'] = data[i]
                     else:
                         raise Exception("Actor's field not found: {}".format(field))
+
+            elif header[0].startswith('debut en ACB'):
+                day, month, year = re.search(r'([0-9]+)/([0-9]+)/(19[0-9]+)', data[0]).groups()
+                personal_info['debut_acb'] = datetime.datetime(year=int(year), month=int(month), day=int(day))
             else:
-                raise Exception('A field of the personal information does not match our patterns: {}', td.text())
+                raise Exception('A field of the personal information does not match our patterns: '
+                                '{} in {}'.format(td.text(), personal_info['full_name']))
 
         return personal_info
 
@@ -290,6 +417,8 @@ class Participant(BaseModel):
     team = ForeignKeyField(Team, index=True, null=True)
     actor = ForeignKeyField(Actor, related_name='participations', index=True, null=True)
     display_name = TextField(null=True)
+    first_name = TextField(null=True)
+    last_name = TextField(null=True)
     number = IntegerField(null=True)
     is_coach = BooleanField(null=True)
     is_referee = BooleanField(null=True)
@@ -377,6 +506,8 @@ class Participant(BaseModel):
         header_to_db.update({"is_coach": "is_coach",
                              "is_referee": "is_referee",
                              "is_starter": "is_starter",
+                             "first_name": "first_name",
+                             "last_name": "last_name",
                              "game": "game",
                              "team": "team",
                              "actor": "actor",
@@ -428,7 +559,16 @@ class Participant(BaseModel):
                         stats[current_team][number]['is_coach'] = 1 if is_coach else 0
                         stats[current_team][number]['is_referee'] = 0
                         stats[current_team][number]['number'] = None if is_coach else int(number)
-                        stats[current_team][number]['display_name'] = td.text()
+
+                        display_name = td.text()
+                        stats[current_team][number]['display_name'] = display_name
+                        if ',' in display_name:
+                            last_name, first_name = list(map(lambda x: x.strip(), td.text().split(",")))
+                        else:  # E.g. San Emeterio
+                            first_name = None
+                            last_name = display_name
+                        stats[current_team][number]['first_name'] = first_name
+                        stats[current_team][number]['last_name'] = last_name
 
                     elif '%' in header[cont]:  # discard percentages.
                         continue

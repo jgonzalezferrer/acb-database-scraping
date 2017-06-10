@@ -2,7 +2,7 @@ import sys, os, re
 import logging
 import numpy as np
 from pyquery import PyQuery as pq
-from src.download import validate_dir, open_or_download
+from src.download import validate_dir, open_or_download, sanity_check
 
 BASE_URL = 'http://www.acb.com/'
 DATA_PATH = '../data'
@@ -30,6 +30,7 @@ class Season:
 
         self.num_teams = self.get_number_teams()
         self.playoff_format = self.get_playoff_format()
+        self.mismatched_teams = []
 
     def save_teams(self):
         filename = os.path.join(self.TEAMS_PATH, 'teams' + '.html')
@@ -82,38 +83,3 @@ class Season:
 
     def get_number_games(self):
         return self.get_number_games_regular_season() + self.get_number_games_playoff()
-
-    def save_games(self, logging_level=logging.INFO):
-        logging.basicConfig(level=logging_level)
-        logger = logging.getLogger(__name__)
-
-        logger.info('Starting downloading...')
-        n_games = self.get_number_games()
-        for game_id in range(1, n_games + 1):
-            filename = os.path.join(self.GAMES_PATH, str(game_id) + '.html')
-            url = BASE_URL + "stspartido.php?cod_competicion=LACB&cod_edicion={}&partido={}".format(self.season_id,
-                                                                                                    game_id)
-            open_or_download(file_path=filename, url=url)
-            if game_id % (n_games / 3) == 0:
-                logger.info(
-                '{}% already downloaded'.format(round(float(game_id) / n_games * 100)))
-
-        logger.info('Downloading finished! (new {} games in {})'.format(n_games, self.GAMES_PATH))
-
-    def sanity_check(self, logging_level=logging.INFO):
-        logging.basicConfig(level=logging_level)
-        logger = logging.getLogger(__name__)
-
-        n_games = self.get_number_games()
-        errors = []
-        for game_id in range(1, n_games + 1):
-            filename = os.path.join(self.GAMES_PATH, str(game_id) + '.html')
-            with open(filename) as f:
-                raw_html = f.read()
-                doc = pq(raw_html)
-                if doc("title").text() == '404 Not Found':
-                    errors.append(game_id)
-
-        if errors: raise Exception('There are {} errors in the downloads!'.format(len(errors)))
-        logger.info('Sanity check correctly finished!\n')
-        return errors

@@ -1,14 +1,18 @@
 CREATE TABLE team (
     id INTEGER PRIMARY KEY,  -- SQLite automatically increments PKs.
     acbid TEXT UNIQUE NOT NULL,  -- Soccerway team ID.
-    name TEXT NOT NULL,
-    season INTEGER NOT NULL,
-    founded_year INTEGER
-
+    founded_year INTEGER,
 );
 CREATE INDEX team_acbid_idx ON team(acbid);
-CREATE INDEX team_name_idx ON team(name);
 
+CREATE TABLE teamName (
+    id INTEGER PRIMARY KEY,
+    acbid_id INTEGER REFERENCES team,
+    name TEXT NOT NULL,
+    season INTEGER NOT NULL,
+    UNIQUE (name, season)
+);
+CREATE INDEX teamName_acb_id_idx ON teamName(acbid_id);
 
 CREATE TABLE game (
     id INTEGER PRIMARY KEY,  -- SQLite automatically increments PKs.
@@ -80,6 +84,7 @@ CREATE TABLE actor (
     height REAL,  -- In meters.
     weight REAL,  -- In kilograms.
     license TEXT,
+    debut_acb TIMESTAMP,
     twitter TEXT
 );
 CREATE INDEX actor_acbd_idx ON actor(acbid);
@@ -96,6 +101,12 @@ CREATE TABLE participant (
 
     -- Display name of the actor
     display_name TEXT,
+
+    -- First name of the actor
+    first_name TEXT,
+
+    -- Last name of the actor
+    last_name TEXT,
 
     -- Squad number of the player
     number INTEGER,
