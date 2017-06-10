@@ -6,9 +6,15 @@ from src.download import validate_dir, open_or_download
 
 BASE_URL = 'http://www.acb.com/'
 DATA_PATH = '../data'
+ACTORS_PATH = os.path.join(DATA_PATH, 'actors')
+PLAYERS_PATH = os.path.join(ACTORS_PATH, 'players')
+COACHES_PATH = os.path.join(ACTORS_PATH, 'coaches')
+
+validate_dir(ACTORS_PATH)
+validate_dir(PLAYERS_PATH)
+validate_dir(COACHES_PATH)
+
 FIRST_SEASON = 1956
-
-
 
 
 class Season:
@@ -72,7 +78,7 @@ class Season:
 
     def get_number_games_playoff(self):
         games_per_round = [4, 2, 1]  # Quarter-finals, semifinals, final.
-        return sum(np.array(self.playoff_format()) * np.array(games_per_round))  # Element-wise multiplication.
+        return sum(np.array(self.playoff_format) * np.array(games_per_round))  # Element-wise multiplication.
 
     def get_number_games(self):
         return self.get_number_games_regular_season() + self.get_number_games_playoff()

@@ -2,7 +2,7 @@ import os.path, re, datetime
 from pyquery import PyQuery as pq
 from collections import defaultdict
 from src.download import open_or_download
-from src.season import Season, BASE_URL
+from src.season import Season, BASE_URL, PLAYERS_PATH, COACHES_PATH
 from src.utils import fill_dict, replace_nth_ocurrence
 
 from peewee import (Model, PrimaryKeyField, TextField, IntegerField,
@@ -62,10 +62,10 @@ class Team(BaseModel):
         url = os.path.join(BASE_URL, 'club.php?cod_competicion=LACB&cod_edicion={}&id={}'.format(season.season_id,
                                                                                                  self.acbid))
         content = open_or_download(file_path=filename, url=url)
-        self.founded_year = self.get_founded_year(content)
+        self.founded_year = self._get_founded_year(content)
         self.save()
 
-    def get_founded_year(self, raw_team):
+    def _get_founded_year(self, raw_team):
         doc = pq(raw_team)
 
         if doc('.titulojug').eq(0).text().startswith('Año de fundac'):
@@ -210,17 +210,79 @@ class Game(BaseModel):
 
 class Actor(BaseModel):
     id = PrimaryKeyField()
-    acbid = TextField(unique=True, index=True)
+    acbid = TextField(index=True)
+    is_coach = BooleanField(null=True)
     display_name = TextField(index=True, null=True)
-    first_name = TextField(null=True)
-    last_name = TextField(null=True)
-    alt_names = TextField(null=True)
+    full_name = TextField(null=True)
     nationality = TextField(null=True)
+    birthplace = TextField(null=True)
     birthdate = DateTimeField(null=True)
     position = TextField(null=True)
     height = DoubleField(null=True)
     weight = DoubleField(null=True)
+    license = TextField(null=True)
+    twitter = TextField(null=True)
 
+    def update_content(self):
+        folder = COACHES_PATH if self.is_coach else PLAYERS_PATH
+        url_tag = 'entrenador' if self.is_coach else 'jugador'
+
+        filename = os.path.join(folder, self.acbid + '.html')
+        url = os.path.join(BASE_URL, '{}.php?id={}'.format(url_tag, self.acbid))
+        content = open_or_download(file_path=filename, url=url)
+
+        personal_info = self._get_personal_info(content)
+        twitter = self._get_twitter(content)
+        if twitter:
+            personal_info.update({'twitter': twitter})
+        Actor.update(**personal_info).where(Actor.acbid == self.acbid).execute()
+
+
+        # self.founded_year = self.get_founded_year(content)
+        # self.save()
+
+    def _get_personal_info(self, raw_doc):
+        doc = pq(raw_doc)
+        personal_info = dict()
+        for cont, td in enumerate(doc('.titulojug').items()):
+            header = list(map(lambda x: x.strip(), td.text().split("|"))) if "|" in td.text() else [td.text()]
+            data = list(map(lambda x: x.strip(), doc('.datojug').eq(cont).text().split("|"))) if td.text() else [td.text()]
+
+            if header[0].startswith("nombre completo"):
+                personal_info['full_name'] = data[0]
+
+            elif header[0].startswith("lugar y fecha"):
+                place, day, month, year = re.search(r'(.*), ([0-9]+)/([0-9]+)/(19[0-9]+)', data[0]).groups()
+                personal_info['birthplace'] = place.strip()
+                personal_info['birthdate'] = datetime.datetime(year=int(year), month=int(month), day=int(day))
+
+            elif header[0].startswith('posic'):
+                for i, field in enumerate(header):
+                    if field.startswith('posic'):
+                        personal_info['position'] = data[i]
+                    elif field.startswith('altura'):
+                        personal_info['height'] = data[i].split(" ")[0]
+                    elif field.startswith('peso'):
+                        personal_info['weight'] = data[i].split(" ")[0]
+                    else:
+                        raise Exception("Actor's field not found: {}".format(field))
+
+            elif header[0].startswith('nacionalidad'):
+                for i, field in enumerate(header):
+                    if field.startswith('nacionalidad'):
+                        personal_info['nationality'] = data[i]
+                    elif field.startswith('licencia'):
+                        personal_info['license'] = data[i]
+                    else:
+                        raise Exception("Actor's field not found: {}".format(field))
+            else:
+                raise Exception('A field of the personal information does not match our patterns: {}', td.text())
+
+        return personal_info
+
+    def _get_twitter(self, raw_doc):
+        twitter = re.search(r'"http://www.twitter.com/(.*?)"', raw_doc)
+        return twitter.groups()[0] if twitter else None
 
 class Participant(BaseModel):
     id = PrimaryKeyField()
@@ -256,11 +318,11 @@ class Participant(BaseModel):
 
     @staticmethod
     def create_instances(raw_game, game):
-        Participant._create_participants(raw_game, game)
+        Participant._create_players_and_coaches(raw_game, game)
         Participant._create_referees(raw_game, game)
 
     @staticmethod
-    def create_participants(raw_game, game):
+    def _create_players_and_coaches(raw_game, game):
         """
 
         :param raw_game: String
@@ -356,8 +418,7 @@ class Participant(BaseModel):
                             stats[current_team][number] = fill_dict(header_to_db.values())
                             stats[current_team][number]['is_starter'] = 1 if td('.gristit') else 0
                             stats[current_team][number]['game'] = game
-                            stats[current_team][number][
-                                'team'] = game.team_home if current_team == game.team_home.name else game.team_away
+                            stats[current_team][number]['team'] = game.team_home if current_team == game.team_home.name else game.team_away
 
                     elif cont == 1 and td('a'):  # second cell player id
                         href_attribute = td('a').attr('href').split("=")  # the acb id is in the href attribute.
@@ -409,11 +470,12 @@ class Participant(BaseModel):
                     actor = Actor.get_or_create(acbid=stats[team][player]['id'])
                     if actor[1]:
                         actor[0].display_name = stats[team][player]['display_name']
+                        actor[0].is_coach = stats[team][player]['is_coach']
                         actor[0].save()
                         actors.append(actor)
                     stats[team][player]['actor'] = actor[0]
                     stats[team][player].pop('id')
-                except:
+                except KeyError:
                     pass
                 to_insert_many_participants.append(stats[team][player])
         participants = Participant.insert_many(to_insert_many_participants)

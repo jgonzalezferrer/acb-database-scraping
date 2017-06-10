@@ -68,19 +68,19 @@ CREATE INDEX game_kickoff_time_idx ON game(kickoff_time);
  * NULL. */
 CREATE TABLE actor (
     id INTEGER PRIMARY KEY,  -- SQLite automatically increments PKs.
-    acbid TEXT UNIQUE NOT NULL,  -- ACB player / coach ID.
+    acbid TEXT NOT NULL,  -- ACB player / coach ID.
+    is_coach BOOLEAN,
     display_name TEXT,
-    first_name TEXT,
-    last_name TEXT,
-    alt_names TEXT,
+    full_name TEXT,
     nationality TEXT,
-
+    birthplace TEXT,
     -- Date of birth. In number of seconds since UNIX epoch, UTC timezone.
     birthdate TIMESTAMP,
-
     position TEXT,  -- simple string
     height REAL,  -- In meters.
-    weight REAL  -- In kilograms.
+    weight REAL,  -- In kilograms.
+    license TEXT,
+    twitter TEXT
 );
 CREATE INDEX actor_acbd_idx ON actor(acbid);
 CREATE INDEX actor_display_name_idx ON actor(display_name);
