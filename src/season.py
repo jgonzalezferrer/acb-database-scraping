@@ -34,7 +34,8 @@ class Season:
 
     def save_teams(self):
         filename = os.path.join(self.TEAMS_PATH, 'teams' + '.html')
-        url = BASE_URL + "resulcla.php?codigo=LACB-{}&jornada=1".format(self.season_id)
+        # There is a bug in 2007 that the first journey has duplicated teams.
+        url = BASE_URL + "resulcla.php?codigo=LACB-{}&jornada=2".format(self.season_id)
         return open_or_download(file_path=filename, url=url)
 
     def get_number_teams(self):

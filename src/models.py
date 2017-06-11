@@ -77,7 +77,8 @@ class Team(BaseModel):
         harcoded_teams = {
             2013: {'CB CANARIAS': 'CAN'},
             2012: {'CAJA LABORAL': 'BAS', 'B&AGRAVE;SQUET MANRESA': 'MAN', 'BÀSQUET MANRESA': 'MAN'},
-            2011: {'BIZKAIA BILBAO BASKET': 'BLB'}
+            2011: {'BIZKAIA BILBAO BASKET': 'BLB'},
+            2009: {'VALENCIA BASKET CLUB': 'PAM'}
         }
         return harcoded_teams
 
@@ -192,7 +193,7 @@ class Game(BaseModel):
         Usually you can use this id to access the concrete game within the link 'http://www.acb.com/fichas/LACBXXYYY.php'
         However, for older seasons, this link might be not available. TODO: find out exactly in which season.
         """
-        game_dict['acbid'] = str(season.season_id).zfill(2, ) + str(id_game_number).zfill(3)
+        game_dict['acbid'] = str(season.season_id).zfill(2) + str(id_game_number).zfill(3)
         game_dict['competition_phase'] = competition_phase
         game_dict['round'] = round_phase
 
@@ -211,8 +212,7 @@ class Game(BaseModel):
 
         for i in [0, 2]:
             team_data = info_teams_data('.estverde').eq(i)('td').eq(0).text()
-            team_name, score = re.search("(.*) ([1]?[0-9][0-9])", team_data).groups()
-
+            team_name = re.search("(.*) [0-9]", team_data).groups()[0]
             """
             We create a team per season since a team can have different names along its history. Anyway, same teams
             will have same acbid.
@@ -242,7 +242,6 @@ class Game(BaseModel):
             TeamName.get_or_create(**{'team': team, 'name': team_name, 'season': season.season})
 
             game_dict['team_home_id' if i == 0 else 'team_away_id'] = team
-            game_dict['score_home' if i == 0 else 'score_away'] = int(score)
             home_team_name = team_name if i == 0 else home_team_name
             away_team_name = team_name if i != 0 else away_team_name
 
@@ -259,7 +258,10 @@ class Game(BaseModel):
             game_dict['kickoff_time'] = datetime.datetime(year=year, month=month, day=day, hour=hour, minute=minute)
 
         if attendance:
-            game_dict['attendance'] = int(attendance.split(":")[1])
+            try:
+                game_dict['attendance'] = int(attendance.split(":")[1])
+            except ValueError:
+                pass
 
         if venue:
             game_dict['venue'] = venue
@@ -292,9 +294,7 @@ class Game(BaseModel):
                     game_dict[score_home_attribute], game_dict[score_away_attribute] = list(
                         map(int, quarter_data.split("|")))
                 except ValueError:
-                    logger.error('The game {} has {} or {} missing'.format(game_dict['acbid'],
-                                                                           score_home_attribute,
-                                                                           score_away_attribute))
+                    pass
 
         game = Game.get_or_create(**game_dict)[0]
         return game
@@ -532,25 +532,50 @@ class Participant(BaseModel):
 
         where 'team' is the name of the team, 'player' is the number of the player and 'stat' is the acb stat id.
         """
+        acb_error_player = acb_error_flag = None
         stats = defaultdict(dict)
         current_team = None
+        score_flag = 0
         for tr in info_players_data('tr').items():  # iterate over each row
             if tr('.estverde'):  # header
                 if tr.eq(0)('.estverdel'):  # team information
-                    current_team = 1 if current_team else 0  # first team home team
+                    current_team = 1 if current_team is None else 0  # first team home team
                     stats[current_team] = defaultdict(dict)
                 else:  # omit indexes
                     pass
             else:  # players, equipo, and coach.
                 number = None
                 for cont, td in enumerate(tr('td').items()):  # iterate over each cell (stat)
-                    if td.text() == "5f" or td.text() == 'Total':  # 5f nor Total are not players.
+                    if td.text() == "5f":  # 5f nor Total are not players.
                         break
+
+                    elif td.text() == 'Total' or number == 'Total':
+                        number = 'Total'
+                        if score_flag < 2:
+                            score_flag += 1
+                            pass
+                        elif score_flag == 2:
+                            score_flag += 1
+                            game.score_home = int(td.text()) if current_team == 0 else game.score_home
+                            game.score_away = int(td.text()) if current_team == 1 else game.score_away
+                            game.save()
+                        else:
+                            score_flag = 0
+                            break
 
                     elif cont == 0:  # first cell number of the player
                         number = td.text() if td.text() else 'Equipo'
                         if number in stats[current_team]:  # preventing from errors with the number.
-                            raise ValueError('Number {} does already exist!'.format(number))
+                            acb_error_flag = True
+                            wrong_pages_first = ['54017', '54026']
+                            wrong_pages_second = ['53154']
+                            if game.acbid in wrong_pages_first: # acb error... >:(
+                                pass
+                            elif game.acbid in wrong_pages_second:
+                                stats[current_team][number] = acb_error_player
+                                break
+                            else:
+                                raise ValueError('Number {} does already exist in game {}!'.format(number, game.acbid))
                         else:
                             # Create the dict with default attributes.
                             stats[current_team][number] = fill_dict(header_to_db.values())
@@ -602,6 +627,7 @@ class Participant(BaseModel):
                             except:
                                 stats[current_team][number][header_to_db[header[cont]]] = td.text()
 
+                    acb_error_player = stats[current_team][number] if acb_error_flag else None
         """
         We now insert the participants of the game in the database.
         Therefore, we need first to get or create the actors in the database.

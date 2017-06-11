@@ -35,9 +35,11 @@ def scrap_games_and_participants(season):
             else:
                 round_phase = 'final'
 
-        try:
             with open(os.path.join('..', 'data', str(season.season), 'games', str(id_game_number) + '.html'), 'r') as f:
                 raw_game = f.read()
+
+                if re.search(r'<title>ACB.COM</title>', raw_game) and re.search(r'"estverdel"> <', raw_game):
+                    continue
 
                 game = Game.create_instance(raw_game=raw_game, id_game_number=id_game_number,
                                             season=season,
@@ -45,8 +47,7 @@ def scrap_games_and_participants(season):
                                             round_phase=round_phase)
 
                 Participant.create_instances(raw_game=raw_game, game=game)
-        except AttributeError:  # some playoff games are missing because they didn't need to play all the games.
-            pass
+
 
 
 def scrap_actors_and_teams():
@@ -56,10 +57,12 @@ def scrap_actors_and_teams():
         # Actor.update_actors()
 
 def main():
-    # reset_database()
+    reset_database()
 
-    year = 2010
+    year = 2001
     season = Season(year)
+    # Game.save_games(season)
+    # Game.sanity_check(season)
 
 
     scrap_games_and_participants(season)
