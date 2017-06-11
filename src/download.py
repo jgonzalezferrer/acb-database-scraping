@@ -38,6 +38,7 @@ def sanity_check(directory_name, logging_level=logging.INFO):
     for file in os.listdir(directory):
         with open(os.path.join(directory, file)) as f:
             raw_html = f.read()
+
             doc = pq(raw_html)
             if doc("title").text() == '404 Not Found':
                 errors.append(os.fsdecode(file))

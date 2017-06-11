@@ -350,8 +350,11 @@ class Actor(BaseModel):
         actors = Actor.select().where(Actor.full_name >> None)
         for cont, actor in enumerate(actors):
             actor.update_content()
-            if cont % (round(len(actors) / 3)) == 0:
-                logger.info( '{}% already updated'.format(round(float(cont) / len(actors) * 100)))
+            try:
+                if len(actors) and cont % (round(len(actors) / 3)) == 0:
+                    logger.info( '{}% already updated'.format(round(float(cont) / len(actors) * 100)))
+            except ZeroDivisionError:
+                pass
 
         logger.info('Update finished! ({} actors)\n'.format(len(actors)))
 
@@ -380,9 +383,12 @@ class Actor(BaseModel):
                 personal_info['full_name'] = data[0]
 
             elif header[0].startswith("lugar y fecha"):
-                place, day, month, year = re.search(r'(.*), ([0-9]+)/([0-9]+)/(19[0-9]+)', data[0]).groups()
-                personal_info['birthplace'] = place.strip()
-                personal_info['birthdate'] = datetime.datetime(year=int(year), month=int(month), day=int(day))
+                try:
+                    place, day, month, year = re.search(r'(.*), ([0-9]+)/([0-9]+)/(19[0-9]+)', data[0]).groups()
+                    personal_info['birthplace'] = place.strip()
+                    personal_info['birthdate'] = datetime.datetime(year=int(year), month=int(month), day=int(day))
+                except:
+                    logging.error('The actor {} has an error in the birthdate and birthplace. Msg: {}'.format(personal_info['full_name'], data[0]))
 
             elif header[0].startswith('posic'):
                 for i, field in enumerate(header):
@@ -405,7 +411,7 @@ class Actor(BaseModel):
                         raise Exception("Actor's field not found: {}".format(field))
 
             elif header[0].startswith('debut en ACB'):
-                day, month, year = re.search(r'([0-9]+)/([0-9]+)/(19[0-9]+)', data[0]).groups()
+                day, month, year = re.search(r'([0-9]+)/([0-9]+)/([0-9]+)', data[0]).groups()
                 personal_info['debut_acb'] = datetime.datetime(year=int(year), month=int(month), day=int(day))
             else:
                 raise Exception('A field of the personal information does not match our patterns: '
@@ -532,14 +538,14 @@ class Participant(BaseModel):
 
         where 'team' is the name of the team, 'player' is the number of the player and 'stat' is the acb stat id.
         """
-        acb_error_player = acb_error_flag = None
+        acb_error_player = None
         stats = defaultdict(dict)
         current_team = None
         score_flag = 0
         for tr in info_players_data('tr').items():  # iterate over each row
             if tr('.estverde'):  # header
                 if tr.eq(0)('.estverdel'):  # team information
-                    current_team = 1 if current_team is None else 0  # first team home team
+                    current_team = 0 if current_team is None else 1  # first team home team
                     stats[current_team] = defaultdict(dict)
                 else:  # omit indexes
                     pass
@@ -553,12 +559,13 @@ class Participant(BaseModel):
                         number = 'Total'
                         if score_flag < 2:
                             score_flag += 1
-                            pass
+                            continue
                         elif score_flag == 2:
                             score_flag += 1
                             game.score_home = int(td.text()) if current_team == 0 else game.score_home
                             game.score_away = int(td.text()) if current_team == 1 else game.score_away
                             game.save()
+                            continue
                         else:
                             score_flag = 0
                             break
@@ -566,10 +573,9 @@ class Participant(BaseModel):
                     elif cont == 0:  # first cell number of the player
                         number = td.text() if td.text() else 'Equipo'
                         if number in stats[current_team]:  # preventing from errors with the number.
-                            acb_error_flag = True
-                            wrong_pages_first = ['54017', '54026']
+                            wrong_pages_first = ['55313', '54017', '54026']
                             wrong_pages_second = ['53154']
-                            if game.acbid in wrong_pages_first: # acb error... >:(
+                            if game.acbid in wrong_pages_first:  # acb error... >:(
                                 pass
                             elif game.acbid in wrong_pages_second:
                                 stats[current_team][number] = acb_error_player
@@ -627,7 +633,7 @@ class Participant(BaseModel):
                             except:
                                 stats[current_team][number][header_to_db[header[cont]]] = td.text()
 
-                    acb_error_player = stats[current_team][number] if acb_error_flag else None
+                    acb_error_player = stats[current_team][number]
         """
         We now insert the participants of the game in the database.
         Therefore, we need first to get or create the actors in the database.
@@ -655,6 +661,7 @@ class Participant(BaseModel):
         participants = Participant.insert_many(to_insert_many_participants)
         participants.execute()
 
+
     @staticmethod
     def _create_referees(raw_game, game):
         """
@@ -663,7 +670,6 @@ class Participant(BaseModel):
         :param raw_game: String
         :return: List of Referee objects
         """
-
         estadisticas_tag = '.estadisticasnew' if re.search(r'<table class="estadisticasnew"',
                                                            raw_game) else '.estadisticas'
         doc = pq(raw_game)
