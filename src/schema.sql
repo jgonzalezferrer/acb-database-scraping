@@ -24,7 +24,7 @@ CREATE TABLE game (
     competition_phase TEXT,
 
     -- If playoff, round of the game (quarter final, semifinal, final).
-    round TEXT,
+    round_phase TEXT,
 
     -- Number of the journey. In regular season it is generally one journey per week. In playoff it is one journey per round match.
     journey INTEGER,

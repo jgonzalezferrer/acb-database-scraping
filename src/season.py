@@ -31,6 +31,7 @@ class Season:
         self.num_teams = self.get_number_teams()
         self.playoff_format = self.get_playoff_format()
         self.mismatched_teams = []
+        self.relegation_playoff_seasons = [1996, 1997]
 
     def save_teams(self):
         filename = os.path.join(self.TEAMS_PATH, 'teams' + '.html')
@@ -83,4 +84,20 @@ class Season:
         return sum(np.array(self.playoff_format) * np.array(games_per_round))  # Element-wise multiplication.
 
     def get_number_games(self):
-        return self.get_number_games_regular_season() + self.get_number_games_playoff()
+        return self.get_number_games_regular_season() + self.get_number_games_playoff() + self.get_number_games_relegation_playoff()
+
+    def get_number_games_relegation_playoff(self):
+        return 5*2 if self.season in self.relegation_playoff_seasons else 0
+
+    def get_relegation_teams(self):
+        filename = os.path.join(self.SEASON_PATH, 'relegation_playoff.html')
+        url = BASE_URL + "resulcla.php?codigo=LACB-{}&jornada={}".format(self.season_id, (self.get_number_teams()-1)*2)
+        content = open_or_download(file_path=filename, url=url)
+        doc = pq(content)
+        relegation_teams = []
+        for team_id in range(self.get_number_teams()-4, self.get_number_teams()):
+            relegation_teams.append(doc('.negro').eq(team_id).text().upper())
+        return relegation_teams
+
+
+

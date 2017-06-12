@@ -119,7 +119,7 @@ class Game(BaseModel):
     team_home = ForeignKeyField(Team, related_name='games_home', index=True, null=True)
     team_away = ForeignKeyField(Team, related_name='games_away', index=True, null=True)
     competition_phase = TextField(null=True)
-    round = TextField(null=True)
+    round_phase = TextField(null=True)
     journey = IntegerField(null=True)
     venue = TextField(null=True)
     attendance = IntegerField(null=True)
@@ -195,7 +195,7 @@ class Game(BaseModel):
         """
         game_dict['acbid'] = str(season.season_id).zfill(2) + str(id_game_number).zfill(3)
         game_dict['competition_phase'] = competition_phase
-        game_dict['round'] = round_phase
+        game_dict['round_phase'] = round_phase
 
         # Information about the teams.
         info_teams_data = doc(estadisticas_tag).eq(1)
