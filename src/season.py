@@ -28,10 +28,11 @@ class Season:
         validate_dir(self.GAMES_PATH)
         validate_dir(self.TEAMS_PATH)
 
+        self.relegation_playoff_seasons = [1994, 1995, 1996, 1997]
+        self.missing_playoff_format = [1994, 1995]
         self.num_teams = self.get_number_teams()
         self.playoff_format = self.get_playoff_format()
         self.mismatched_teams = []
-        self.relegation_playoff_seasons = [1996, 1997]
 
     def save_teams(self):
         filename = os.path.join(self.TEAMS_PATH, 'teams' + '.html')
@@ -42,7 +43,10 @@ class Season:
     def get_number_teams(self):
         content = self.save_teams()
         teams_match = re.findall(r'<td class="rojo" align="right"><b>([0-9]+)</b>', content, re.DOTALL)
-        return len(teams_match)
+        if len(teams_match) == 0:  # from 1994 and backward there isn't standings, we just count the games
+            return len(re.findall(r'http://www.acb.com/imgs//flechitaroja.gif', content, re.DOTALL))*2
+        else:
+            return len(teams_match)
 
     def get_teams_ids(self):
         content = self.save_teams()
@@ -66,15 +70,18 @@ class Season:
         return round_format
 
     def get_playoff_format(self):
-        filename = os.path.join(self.SEASON_PATH, 'playoff.html')
-        url = BASE_URL + "playoff.php?cod_competicion=LACB&cod_edicion={}".format(self.season_id)
-        content = open_or_download(file_path=filename, url=url)
+        if self.season in self.missing_playoff_format:
+            return [3, 5, 5]  # page 32 in http://www.acb.com/publicaciones/guia1995
+        else:
+            filename = os.path.join(self.SEASON_PATH, 'playoff.html')
+            url = BASE_URL + "playoff.php?cod_competicion=LACB&cod_edicion={}".format(self.season_id)
+            content = open_or_download(file_path=filename, url=url)
 
-        playoff_format = list()
-        playoff_format.append(self.get_playoff_round_format(content, "#columnacuartos"))
-        playoff_format.append(self.get_playoff_round_format(content, "#columnasemi"))
-        playoff_format.append(self.get_playoff_round_format(content, "#columnafinal"))
-        return playoff_format
+            playoff_format = list()
+            playoff_format.append(self.get_playoff_round_format(content, "#columnacuartos"))
+            playoff_format.append(self.get_playoff_round_format(content, "#columnasemi"))
+            playoff_format.append(self.get_playoff_round_format(content, "#columnafinal"))
+            return playoff_format
 
     def get_number_games_regular_season(self):
         return (self.num_teams - 1) * self.num_teams
@@ -90,14 +97,18 @@ class Season:
         return 5*2 if self.season in self.relegation_playoff_seasons else 0
 
     def get_relegation_teams(self):
-        filename = os.path.join(self.SEASON_PATH, 'relegation_playoff.html')
-        url = BASE_URL + "resulcla.php?codigo=LACB-{}&jornada={}".format(self.season_id, (self.get_number_teams()-1)*2)
-        content = open_or_download(file_path=filename, url=url)
-        doc = pq(content)
-        relegation_teams = []
-        for team_id in range(self.get_number_teams()-4, self.get_number_teams()):
-            relegation_teams.append(doc('.negro').eq(team_id).text().upper())
-        return relegation_teams
+        if self.season <= 1994:
+            return {1994: ['VALVI GIRONA', 'BREOGÁN LUGO', 'PAMESA VALENCIA', 'SOMONTANO HUESCA']}[self.season]
+        else:
+            filename = os.path.join(self.SEASON_PATH, 'relegation_playoff.html')
+            url = BASE_URL + "resulcla.php?codigo=LACB-{}&jornada={}".format(self.season_id, (self.get_number_teams()-1)*2)
+            content = open_or_download(file_path=filename, url=url)
+            doc = pq(content)
+            relegation_teams = []
+            for team_id in range(self.get_number_teams()-4, self.get_number_teams()):
+                relegation_teams.append(doc('.negro').eq(team_id).text().upper())
+
+            return relegation_teams
 
 
 

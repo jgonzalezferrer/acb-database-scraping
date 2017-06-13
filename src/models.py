@@ -209,7 +209,6 @@ class Game(BaseModel):
         Full disclosure: we get these ids from the standing page.
         """
         teams_ids = season.get_teams_ids()
-
         for i in [0, 2]:
             team_data = info_teams_data('.estverde').eq(i)('td').eq(0).text()
             team_name = re.search("(.*) [0-9]", team_data).groups()[0]
@@ -225,7 +224,8 @@ class Game(BaseModel):
 
             """
             try:
-                team = Team.get(Team.acbid == teams_ids[team_name])
+                team_acbid = teams_ids[team_name] if len(teams_ids) else TeamName.get(TeamName.name == team_name).team.acbid
+                team = Team.get(Team.acbid == team_acbid)
             except KeyError:
                 if season.season in list(Team.get_harcoded_teams().keys()) and team_name in list(Team.get_harcoded_teams()[season.season].keys()):
                     team = Team.get(Team.acbid == Team.get_harcoded_teams()[season.season][team_name])
@@ -296,7 +296,10 @@ class Game(BaseModel):
                 except ValueError:
                     pass
 
-        game = Game.get_or_create(**game_dict)[0]
+        try:
+            game = Game.get(Game.acbid == game_dict['acbid'])
+        except:
+            game = Game.create(**game_dict)
         return game
 
 

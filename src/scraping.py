@@ -5,6 +5,18 @@ from src.season import Season
 from src.models import DATABASE, reset_database, Team, TeamName, Game, Actor, Participant
 
 
+def insert_team_names(name, acbid, season):
+    team = Team.get(Team.acbid == acbid)
+    TeamName.get_or_create(**{'name': name, 'team': team, 'season': season})
+
+def new_teams():
+    insert_team_names('BREOGÁN LUGO', 'BRE', 2004)
+    insert_team_names('C. BALONCESTO MURCIA', 'MUR', 2004)
+    insert_team_names('ESTUDIANTES CAJA POSTAL', 'EST', 2004)
+    insert_team_names('COREN ORENSE', 'ORE', 2004)
+    insert_team_names('SOMONTANO HUESCA', 'HUE', 2004)
+    insert_team_names('7UP JOVENTUT', 'JOV', 2004)
+
 def scrap_games_and_participants(season):
     with DATABASE.atomic():
         Team.create_instances(season)
@@ -30,14 +42,14 @@ def scrap_games_and_participants(season):
         semifinals_limit = quarter_finals_limit + 2 * playoff_format[1]
 
         relegation_teams = season.get_relegation_teams()
+        print(relegation_teams)
         cont = 0
-        id_game_number = season.get_number_games_regular_season()+1
+        id_game_number = season.get_number_games_regular_season()
         playoff_end = season.get_number_games()
 
-        while id_game_number <= playoff_end:
+        while id_game_number < playoff_end:
+            id_game_number += 1
             with open(os.path.join('..', 'data', str(season.season), 'games', str(id_game_number) + '.html'), 'r') as f:
-                print(id_game_number, playoff_end)
-                id_game_number += 1
                 raw_game = f.read()
 
                 if re.search(r'<title>ACB.COM</title>', raw_game) \
@@ -67,78 +79,80 @@ def scrap_games_and_participants(season):
                 game.save()
                 Participant.create_instances(raw_game=raw_game, game=game)
 
+
 def scrap_actors_and_teams():
     with DATABASE.atomic():
         Actor.save_actors()
         Actor.sanity_check()
-        # esteban = Actor.get(Actor.display_name=='Esteban, Màxim')
-        # esteban.acbid = '2CH'
-        # esteban.save()
-        #
-        # esteban = Actor.get(Actor.display_name == 'Sharabidze, G.')
-        # esteban.acbid = 'Y9G'
-        # esteban.save()
-        #
-        # real_tavares = Actor.get((Actor.display_name == 'Tavares, W.') & (Actor.acbid == 'T2Z'))
-        #
-        # try:
-        #     fake_tavares = Actor.get((Actor.display_name == 'Tavares, W.') & (Actor.acbid == 'SHP'))
-        #
-        #     for participation in fake_tavares.participations:
-        #         participation.actor = real_tavares
-        #         participation.save()
-        #     fake_tavares.delete_instance()
-        # except Actor.DoesNotExist:
-        #     pass
-        #
-        # real_stobart = Actor.get((Actor.display_name == 'Stobart, Micky') & (Actor.acbid == 'B7P'))
-        #
-        # try:
-        #     fake_stobart = Actor.get((Actor.display_name == 'Stobart, Micky') & (Actor.acbid == 'FII'))
-        #
-        #     for participation in fake_stobart.participations:
-        #         participation.actor = real_stobart
-        #         participation.save()
-        #         fake_stobart.delete_instance()
-        # except Actor.DoesNotExist:
-        #     pass
-        #
-        # real_stobart = Actor.get((Actor.display_name == 'Olaizola, Julen') & (Actor.acbid == 'T86'))
-        #
-        # try:
-        #     fake_stobart = Actor.get((Actor.display_name == 'Olaizola, Julen') & (Actor.acbid == '162'))
-        #
-        #     for participation in fake_stobart.participations:
-        #         participation.actor = real_stobart
-        #         participation.save()
-        #         fake_stobart.delete_instance()
-        # except Actor.DoesNotExist:
-        #     pass
-        #
-        # real_stobart = Actor.get((Actor.display_name == 'Izquierdo, Antonio') & (Actor.acbid == '773'))
-        #
-        # try:
-        #     fake_stobart = Actor.get((Actor.display_name == 'Izquierdo, Antonio') & (Actor.acbid == 'YHK'))
-        #
-        #     for participation in fake_stobart.participations:
-        #         participation.actor = real_stobart
-        #         participation.save()
-        #         fake_stobart.delete_instance()
-        # except Actor.DoesNotExist:
-        #     pass
-        #
+        esteban = Actor.get(Actor.display_name=='Esteban, Màxim')
+        esteban.acbid = '2CH'
+        esteban.save()
+
+        esteban = Actor.get(Actor.display_name == 'Sharabidze, G.')
+        esteban.acbid = 'Y9G'
+        esteban.save()
+
+        real_tavares = Actor.get((Actor.display_name == 'Tavares, W.') & (Actor.acbid == 'T2Z'))
+
+        try:
+            fake_tavares = Actor.get((Actor.display_name == 'Tavares, W.') & (Actor.acbid == 'SHP'))
+
+            for participation in fake_tavares.participations:
+                participation.actor = real_tavares
+                participation.save()
+            fake_tavares.delete_instance()
+        except Actor.DoesNotExist:
+            pass
+
+        real_stobart = Actor.get((Actor.display_name == 'Stobart, Micky') & (Actor.acbid == 'B7P'))
+
+        try:
+            fake_stobart = Actor.get((Actor.display_name == 'Stobart, Micky') & (Actor.acbid == 'FII'))
+
+            for participation in fake_stobart.participations:
+                participation.actor = real_stobart
+                participation.save()
+                fake_stobart.delete_instance()
+        except Actor.DoesNotExist:
+            pass
+
+        real_stobart = Actor.get((Actor.display_name == 'Olaizola, Julen') & (Actor.acbid == 'T86'))
+
+        try:
+            fake_stobart = Actor.get((Actor.display_name == 'Olaizola, Julen') & (Actor.acbid == '162'))
+
+            for participation in fake_stobart.participations:
+                participation.actor = real_stobart
+                participation.save()
+                fake_stobart.delete_instance()
+        except Actor.DoesNotExist:
+            pass
+
+        real_stobart = Actor.get((Actor.display_name == 'Izquierdo, Antonio') & (Actor.acbid == '773'))
+
+        try:
+            fake_stobart = Actor.get((Actor.display_name == 'Izquierdo, Antonio') & (Actor.acbid == 'YHK'))
+
+            for participation in fake_stobart.participations:
+                participation.actor = real_stobart
+                participation.save()
+                fake_stobart.delete_instance()
+        except Actor.DoesNotExist:
+            pass
+
         Actor.update_actors()
 
 
 def main():
-        reset_database()
-    # for year in reversed(range(1998, 2016)):
-        year = 1998
+    # reset_database()
+    new_teams()
+    for year in reversed(range(1994, 1995)):
         season = Season(year)
-        Game.save_games(season)
-        Game.sanity_check(season)
-        scrap_games_and_participants(season)
-        # scrap_actors_and_teams()
+        # Game.save_games(season)
+        # Game.sanity_check(season)
+        # Team.create_instances(season)
+        # scrap_games_and_participants(season)
+    scrap_actors_and_teams()
 
 if __name__ == "__main__":
     main()
