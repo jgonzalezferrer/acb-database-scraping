@@ -128,7 +128,7 @@ def main(args):
             insert_games(season)
 
         # Update missing info about actors, teams and participants.
-        update_games(season)
+        update_games()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

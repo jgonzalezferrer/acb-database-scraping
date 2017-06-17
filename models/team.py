@@ -1,4 +1,4 @@
-import os.path
+import os.path, logging
 from pyquery import PyQuery as pq
 from peewee import ForeignKeyField
 from src.download import open_or_download
@@ -57,19 +57,41 @@ class Team(BaseModel):
         }
         return harcoded_teams
 
-    def update_content(self):
+    @staticmethod
+    def update_content(logging_level=logging.INFO):
+        """
+        First we insert the instances in the database with basic information and later we update the rest of fields.
+        We update the information of the teams that have not been filled yet in the database.
+        """
+        logging.basicConfig(level=logging_level)
+        logger = logging.getLogger(__name__)
+
+        logger.info('Starting to update the teams that have not been filled yet...')
+        teams = Team.select().where(Team.founded_year >> None)
+        for cont, team in enumerate(teams):
+            team._update_content()
+            try:
+                if len(teams) and cont % (round(len(teams) / 3)) == 0:
+                    logger.info('{}% already updated'.format(round(float(cont) / len(teams) * 100)))
+            except ZeroDivisionError:
+                pass
+
+        logger.info('Update finished! ({} teams)\n'.format(len(teams)))
+
+    def _update_content(self):
         """
         First we insert the instances in the database with basic information and later we update the rest of fields.
         :return:
         """
-        season = Season(self.season)
-
-        filename = os.path.join(season.TEAMS_PATH, self.acbid + '.html')
-        url = os.path.join(BASE_URL, 'club.php?cod_competicion=LACB&cod_edicion={}&id={}'.format(season.season_id,
-                                                                                                 self.acbid))
+        from src.season import BASE_URL, TEAMS_PATH
+        filename = os.path.join(TEAMS_PATH, self.acbid + '.html')
+        url = os.path.join(BASE_URL, 'club.php?cod_competicion=LACB&id={}'.format(self.acbid))
         content = open_or_download(file_path=filename, url=url)
-        self.founded_year = self._get_founded_year(content)
-        self.save()
+        try:
+            self.founded_year = self._get_founded_year(content)
+            self.save()
+        except ValueError:
+            pass
 
     def _get_founded_year(self, raw_team):
         """

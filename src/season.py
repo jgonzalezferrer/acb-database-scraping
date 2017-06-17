@@ -7,10 +7,12 @@ from src.download import validate_dir, open_or_download
 FIRST_SEASON = 1956
 BASE_URL = 'http://www.acb.com/'
 DATA_PATH = '../data'
+TEAMS_PATH = os.path.join(DATA_PATH, 'teams')
 ACTORS_PATH = os.path.join(DATA_PATH, 'actors')
 PLAYERS_PATH = os.path.join(ACTORS_PATH, 'players')
 COACHES_PATH = os.path.join(ACTORS_PATH, 'coaches')
 
+validate_dir(TEAMS_PATH)
 validate_dir(ACTORS_PATH)
 validate_dir(PLAYERS_PATH)
 validate_dir(COACHES_PATH)
@@ -22,10 +24,8 @@ class Season:
         self.season_id = season - FIRST_SEASON + 1  # First season in 1956 noted as 1.
         self.SEASON_PATH = os.path.join(DATA_PATH, str(self.season))
         self.GAMES_PATH = os.path.join(self.SEASON_PATH, 'games')
-        self.TEAMS_PATH = os.path.join(self.SEASON_PATH, 'teams')
         validate_dir(self.SEASON_PATH)
         validate_dir(self.GAMES_PATH)
-        validate_dir(self.TEAMS_PATH)
 
         self.relegation_playoff_seasons = [1994, 1995, 1996, 1997]
         self.missing_playoff_format = [1994, 1995]
@@ -34,7 +34,7 @@ class Season:
         self.mismatched_teams = []
 
     def save_teams(self):
-        filename = os.path.join(self.TEAMS_PATH, 'teams' + '.html')
+        filename = os.path.join(self.SEASON_PATH, 'teams' + '.html')
         # There is a bug in 2007 that the first journey has duplicated teams.
         url = BASE_URL + "resulcla.php?codigo=LACB-{}&jornada=2".format(self.season_id)
         return open_or_download(file_path=filename, url=url)
