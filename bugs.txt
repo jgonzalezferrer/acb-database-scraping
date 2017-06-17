@@ -1,7 +1,0 @@
-equipos duplicados:
-http://www.acb.com/resulcla.php?codigo=LACB-51&jornada=1&resultados=1
-
-
-jugadores duplicados:
-wrong_pages_first = ['54017', '54026']
-wrong_pages_second = ['53154']
