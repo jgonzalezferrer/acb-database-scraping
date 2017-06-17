@@ -1,9 +1,10 @@
-import sys, os, re
-import logging
+import os, re
 import numpy as np
 from pyquery import PyQuery as pq
-from src.download import validate_dir, open_or_download, sanity_check
+from src.download import validate_dir, open_or_download
 
+
+FIRST_SEASON = 1956
 BASE_URL = 'http://www.acb.com/'
 DATA_PATH = '../data'
 ACTORS_PATH = os.path.join(DATA_PATH, 'actors')
@@ -13,8 +14,6 @@ COACHES_PATH = os.path.join(ACTORS_PATH, 'coaches')
 validate_dir(ACTORS_PATH)
 validate_dir(PLAYERS_PATH)
 validate_dir(COACHES_PATH)
-
-FIRST_SEASON = 1956
 
 
 class Season:
@@ -109,6 +108,3 @@ class Season:
                 relegation_teams.append(doc('.negro').eq(team_id).text().upper())
 
             return relegation_teams
-
-
-
