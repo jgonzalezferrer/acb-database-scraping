@@ -36,6 +36,3 @@ This dataset includes statistics about the games, teams, players and coaches. It
 * **TeamName**: the name of a team can change between seasons (and even within the same season). 
 
 In summation, this database contains the stats from games such as http://www.acb.com/fichas/LACB61295.php
-
-# Database
-
