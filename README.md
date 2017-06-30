@@ -10,7 +10,7 @@ Why from 1994? In 1994, the ACB changed to the current modern league format, whi
 * peewee
 
 # Instructions on how to execute
-The database can be freely accessed from https://data.world/jgonzalezferrer/acb-1994-2016-spanish-basketball-league-results or https://www.kaggle.com/jgonzalezferrer/acb-19942016-spanish-basketball-league-results. However, if you want to execute the code by yourself you can just use the `run.py` script:
+The database can be freely accessed from https://data.world/jgonzalezferrer/acb-1994-2016-spanish-basketball-league-results or https://www.kaggle.com/jgonzalezferrer/acb-spanish-basketball-league-results. However, if you want to execute the code by yourself you can just use the `run.py` script:
 
 ```
 $ python run.py [-r] [-d] [-i] [--start] [first_year] [--end] [last_year]
